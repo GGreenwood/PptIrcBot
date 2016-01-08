@@ -10,306 +10,48 @@ def debug(msg):
     # print msg
     pass
 
-
-"""
-Bitstream format:
-
-0xxxxxyyyyyzzzzz - Three characters * 5 bits each for chat
-1xxxxxxx0yyyyyyy - Two chars * 7 bits for a more extended char set.
-                   The second char is for Red.
-1xxxxxxx1yyyyyyy - One char and a command. The command might cause some
-                   following input to be treated differently.
-
-1xxxxxxx11101110 - Command to shift palette forward one.
-
-The 5 bit character mapping:
-
-0  (newline)    16 p
-1  a            17 q
-2  b            18 r
-3  c            19 s
-4  d            20 t
-5  e            21 u
-6  f            22 v
-7  g            23 w
-8  h            24 x
-9  i            25 y
-10 j            26 z
-11 k            27   (space)
-12 l            28 ? (question mark)
-13 m            29 ! (exclamation mark)
-14 n            30 : (colon)
-15 o            31 .
-
-Alphabet and space should be obvious. We can convert text to lowercase.
-colon is there because it comes after every nick
-newline is there to end each line
-After that I looked at last year's chat and ? and ! are the most common
-punctuation. Think about it, if we pull this off it is going to be a
-!!!??? situation, not something you end with a period.
-
-We can convert text to lowercase. Emotes are sent separately so no worries
-about them here.
-
-I'll try to organize the code to make it easy to change if necessary.
-
-About the two char command, ascii 0 will be a non-printing null. So when
-Red speaks we can send one char of normal chat and one char for Red.
-
-What about the commands? At the very least we need a command for emotes.
-Let's call the 7 bits the opcode.
-"""
-
-LINE_LENGTH = 32  # Number of symbols per line.
-
-
-RED_COOLDOWN = 100  # Delay between RED's characters.
-
-#This is 10000000 0000000, 16 bits with just the high bit set
-HighBitSet = 2 ** 15
-
-#The 7-bit encoding for null character
-NullCharCode = 127
-
-
 #************************
 #*  Character mappings  *
 #************************
 
-
-def makeFiveBitMap():
-    """Set the mapping for the 5 bit chars"""
+# Returns a MSB representation of the SNES button map
+def makeCharMap():
     mapping = {}
-    #a-z are 1-26
-    for i in xrange(ord('a'), ord('z') + 1):
-        mapping[chr(i)] = 1 + i - ord('a')
     mapping.update({
-        '\n': 0,
-        ' ': 27,
-        '?': 28,
-        '!': 29,
-        ':': 30,
-        '.': 31,
+        'b': 0,
+        'y': 1,
+        #'start': 2,
+        #'select': 3,
+        'u': 4,
+        'd': 5,
+        'l': 6,
+        'r': 7,
+        'a': 8,
+        'x': 9,
+        #'l_shoulder': 10,
+        #'r_shoulder': 11
     })
     return mapping
 
 
-FiveBitMapping = makeFiveBitMap()
+CharMap = makeCharMap()
 
-
-def makeEmoteMaps():
-    #These are simpler emotes. Tracked separately because the parsing is slightly different.
-    RobotEmoteList = [
-        ':)',
-        ':(',
-        ':o',
-        ':z',
-        'B)',
-        ':/',
-        ';)',
-        ';p',
-        ':p',
-        'R)',
-        'o_O',
-        ':D',
-        '>(',
-        '<3',
-    ]
-    #Mapping will be 0-13 in the order of this list
-    RobotEmoteMap = dict([(RobotEmoteList[i], i) for i in xrange(len(RobotEmoteList))])
-
-    #Face emotes that we have actually converted.
-    #Other face emotes will be parsed but mapped to some other face.
-    FaceEmoteList = [
-        'Kappa',
-        'FrankerZ',
-        'ResidentSleeper',
-        'FailFish',
-        'KreyGasm',
-        'PogChamp',
-        'SwiftRage',
-        'PJSalt',
-        'BibleThump',
-        'WinWaker',
-        'SomeFace',  # FIXME Placeholder
-    ]
-    #Mapping will be 14-24 in the order of this list
-    FaceEmoteMap = dict([(FaceEmoteList[i], i + len(RobotEmoteList)) for i in xrange(len(FaceEmoteList))])
-
-    #Read all the emotes from a text file
-    with open('twitchemotes.txt') as twitchEmoteFile:
-        allFaceEmotes = [emote.strip() for emote in twitchEmoteFile.readlines()]
-    for emote in allFaceEmotes:
-        if len(emote) > 0 and emote not in FaceEmoteMap:
-            #This sets the default
-            FaceEmoteMap[emote] = FaceEmoteMap['Kappa']
-
-    return RobotEmoteMap, FaceEmoteMap
-
-
-RobotEmoteMap, FaceEmoteMap = makeEmoteMaps()
-
-
-def makeSevenBitMapping():
-    """Mapping for 7 bit chars, including emotes"""
-    # 0-96 in the order of this string, matching the font
-    legalChars = list(
-        '\nabcdefghijklmno'
-        'pqrstuvwxyz ?!:.'
-        '"#$%&\\\'()*+,-./0'
-        '123456789;,=@ABC'
-        'DEFGHIJKLMNOPQRS'
-        'TUVWXYZ[\]^_`{|}'
-        '~'
-    )
-    mapping = dict([(legalChars[i], i) for i in xrange(len(legalChars))])
-
-    #Now add in emotes
-    #Robot emotes have an index from 0-13. That gets mapped to 97-110 in this map.
-    for emote in RobotEmoteMap:
-        mapping[emote] = 97 + RobotEmoteMap[emote]
-    #Face emotes have an index from 14-24. That gets mapped to 111-121 in this map.
-    for emote in FaceEmoteMap:
-        mapping[emote] = 97 + FaceEmoteMap[emote]
-    #127 is a non-printing null (no-op)
-
-    return mapping
-
-SevenBitMapping = makeSevenBitMapping()
-
-
-# Here we compile a massive regex that captures all multi-character symbols.
-SYMBOLS = [r'\bShiftPalette\b']
-SYMBOLS += sorted((re.escape(e) for e in RobotEmoteMap), reverse=True)
-SYMBOLS += [r'\b{}\b'.format(re.escape(e)) for e in sorted(FaceEmoteMap, reverse=True)]
-SYMBOL_REGEX = re.compile('(' + '|'.join(SYMBOLS) + ')')
-
-
-def textToSymbols(line):
-    """
-    Parse a line into list of symbols in our font, filtering out those which
-    cannot be displayed.
-
-    >>> textToSymbols('Kappa Kappa foo')
-    ['Kappa', ' ', 'Kappa', ' ', 'f', 'o', 'o']
-    >>> textToSymbols('a b  c   ')
-    ['a', ' ', 'b', ' ', ' ', 'c', ' ', ' ', ' ']
-    >>> textToSymbols('A ShiftPalette Z')
-    ['A', ' ', 'ShiftPalette', ' ', 'Z']
-    >>> textToSymbols('Kappa:D')
-    ['Kappa', ':D']
-    >>> textToSymbols('KappaKappa:D')
-    ['K', 'a', 'p', 'p', 'a', 'K', 'a', 'p', 'p', 'a', ':D']
-    >>> textToSymbols('a B c D e')
-    ['a', ' ', 'B', ' ', 'c', ' ', 'D', ' ', 'e']
-    >>> textToSymbols('Kappa foo bar')
-    ['Kappa', ' ', 'f', 'o', 'o', ' ', 'b', 'a', 'r']
-    >>> textToSymbols('>>>Hello :)Kappa__ UnSane')
-    ['H', 'e', 'l', 'l', 'o', ' ', ':)', 'K', 'a', 'p', 'p', 'a', '_', '_', ' ', 'UnSane']
-    """
-    symbols = []
-    for chunk in SYMBOL_REGEX.split(line):
-        if chunk in RobotEmoteMap or chunk in FaceEmoteMap or chunk == 'ShiftPalette':
-            symbols.append(chunk)
-        else:
-            for char in chunk:
-                if char in SevenBitMapping:
-                    symbols.append(char)
-    return symbols
-
-
-def formatRoomMessage(message):
-    r"""
-    Format an IRC message from the chat room by converting it to the font's
-    symbol set and applying line wrapping.  The result is a list of symbols.
-
-    >>> formatRoomMessage('blue:hello, world!')
-    ['b', 'l', 'u', 'e', ':', ' ', 'h', 'e', 'l', 'l', 'o', ',', ' ', 'w', 'o', 'r', 'l', 'd', '!', '\n']
-    >>> formatRoomMessage('<yellow>:go:far\n')
-    ['y', 'e', 'l', 'l', 'o', 'w', ':', ' ', 'g', 'o', ':', 'f', 'a', 'r', '\n']
-
-    >>> message = 'purple:this is a long message, one so long it will wrap\n'
-    >>> lines = list(
-    ...     'purple: this is a long message, \n'
-    ...     'one so long it will wrap\n'
-    ... )
-    >>> formatRoomMessage(message) == lines
-    True
-    """
-    # Full line should have nick:text. Need to split that up because nick does
-    # not get emotes.
-    nick, text = message.split(':', 1)
-    symbols = ([c for c in nick if c in SevenBitMapping] + [':', ' '] +
-               textToSymbols(text.rstrip('\n')))
-    return symbols + ['\n']
-    #This puts newlines for each line. Instead the snes side will handle this.
-    #lines = []
-    #for i in range(0, len(symbols), LINE_LENGTH):
-        #lines.extend(symbols[i:i + LINE_LENGTH])
-        #lines.append('\n')
-    #return lines
-
-
-def padForRed(symbols):
-    """
-    Pad the message with spaces so that its length is a multiple of 32.
-
-    :param list symbols:
-
-    >>> padForRed(['a']) == ['a'] + [' '] * 31
-    True
-    >>> padForRed(['a'] * 32) == ['a'] * 32
-    True
-    """
-    if len(symbols) % 28 == 0:
-        return symbols
-
-    return symbols + [' '] * (28 - (len(symbols) % 28))
-
-
-def encodeThreeChars(c1=None, c2=None, c3=None):
-    """
-    Get the 16-bit encoding for up to three characters.
-
-    >>> decodeBits(encodeThreeChars('a', 'b', 'c'))
-    '0000010001000011'
-    """
-    n1 = FiveBitMapping.get(c1, 0)
-    n2 = FiveBitMapping.get(c2, 0)
-    n3 = FiveBitMapping.get(c3, 0)
-    return (n1 << 10) + (n2 << 5) + n3
-
-
-
-def encodeChatChar(chatChar):
-    """Encode a single chat char in ascii"""
-    return HighBitSet + (SevenBitMapping.get(chatChar, NullCharCode) << 8)
-
-
-def encodeTwoChars(chatChar=None, redChar=None):
-    """Encode two characters, one for chat and one for Red.
-       Both are optional.
-    """
-    return HighBitSet + (SevenBitMapping.get(chatChar, NullCharCode) << 8) + SevenBitMapping.get(redChar, NullCharCode)
-    # return (SevenBitMapping.get(chatChar, NullCharCode) << 8) + SevenBitMapping.get(redChar, NullCharCode)
-
-# A no-op is two null chars
-#NopBits = encodeTwoChars()
-NopBits = 0xFFFF
-
-
-ShiftPaletteBits = 0b1111111111101110
-
+def encodeChar(chatChar=None):
+    # Encode a char as a literal button press
+    charId = CharMap.get(chatChar)
+    if charId:
+        return ~(1 << 15 - charId) & 0xFF
+    else:
+        return 0xFF
 
 class TextPipeHandler(Thread):
     """Reads the input from the replay pipe and adds to the line queues.
        Decides when to drop chat if it gets too backed up.
     """
-    def __init__(self, chatQueue, redQueue, pipeName):
+    def __init__(self, chatQueue, pipeName):
         super(TextPipeHandler, self).__init__()
 
         self.chatQueue = chatQueue
-        self.redQueue = redQueue
 
         if not os.path.exists(pipeName):
             os.mkfifo(pipeName)
@@ -337,20 +79,15 @@ class BitStreamer(object):
     """Manages the stream of commands to send"""
     def __init__(self, pipeName=None):
         self.chatQueue = Queue()
-        self.redQueue = Queue()
 
         #If we got a pipe name then start the pipe handler thread
         #It will add to the queues as it reads text from chat
         if pipeName is not None:
-            pipeThread = TextPipeHandler(self.chatQueue, self.redQueue, pipeName)
+            pipeThread = TextPipeHandler(self.chatQueue, pipeName)
             pipeThread.start()
 
         #Translate next line into a list of chars or emotes to send
         self.chatChars = []
-        self.redChars = []
-
-        #Number of inputs until another char from red
-        self.redCooldown = 0
 
     def readChatQueue(self):
         """Grab a line of chat text"""
@@ -363,11 +100,10 @@ class BitStreamer(object):
     def getBitsToSend(self):
         """Check our char queues and get the bits to send"""
         #include a chat char
-        debug("Chat: %r Red: %r" % (self.chatChars[0], self.redChars[0],))
-        return encodeTwoChars(
-            self.chatChars.pop(0),
-            self.redChars.pop(0))
+        encoded = encodeChar(self.chatChars.pop(0)) 
+        debug("Button pressed: %s" % (self.chatChars.pop(0), decodeBits(encoded)))
 
+        return encoded | 0xFF
 
     def getNextBits(self):
         """Send the next set of bits based on incoming text.
@@ -380,6 +116,7 @@ class BitStreamer(object):
 
         #This is the stream that goes to replay
         return self.getBitsToSend()
+
 
 def decodeBits(bits):
     """Debugging decode of 16 bits. Convert to binary string e.g. 00111011011010101010"""
