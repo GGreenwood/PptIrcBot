@@ -7,7 +7,7 @@ from Queue import Queue
 
 
 def debug(msg):
-    # print msg
+    print msg
     pass
 
 #************************
@@ -20,16 +20,16 @@ def makeCharMap():
     mapping.update({
         'b': 0,
         'y': 1,
-        #'start': 2,
-        #'select': 3,
+        'start': 2,
+        'select': 3,
         'u': 4,
         'd': 5,
         'l': 6,
         'r': 7,
         'a': 8,
         'x': 9,
-        #'l_shoulder': 10,
-        #'r_shoulder': 11
+        'l_shoulder': 10,
+        'r_shoulder': 11
     })
     return mapping
 
