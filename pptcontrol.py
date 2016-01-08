@@ -100,10 +100,13 @@ class BitStreamer(object):
     def getBitsToSend(self):
         """Check our char queues and get the bits to send"""
         #include a chat char
-        encoded = encodeChar(self.chatChars.pop(0)) 
-        debug("Button pressed: %s" % (self.chatChars.pop(0), decodeBits(encoded)))
+        if(self.chatChars):
+            encoded = encodeChar(self.chatChars.pop(0)) 
+            debug("Button pressed: %s, %s" % (self.chatChars.pop(0), decodeBits(encoded)))
 
-        return encoded | 0xFF
+            return encoded & 0xFFFF
+        else:
+            return 0xFFFF
 
     def getNextBits(self):
         """Send the next set of bits based on incoming text.
