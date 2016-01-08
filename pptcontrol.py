@@ -10,6 +10,8 @@ def debug(msg):
     print msg
     pass
 
+NopChar = 0x0000
+
 #************************
 #*  Character mappings  *
 #************************
@@ -40,9 +42,10 @@ def encodeChar(chatChar=None):
     # Encode a char as a literal button press
     charId = CharMap.get(chatChar)
     if charId:
-        return 0xFFFF - (1 << 15 - charId)
+        #return 0xFFFF - (1 << 15 - charId)
+        return 1 << 15 - charId
     else:
-        return 0xFFFF
+        return NopChar
 
 class TextPipeHandler(Thread):
     """Reads the input from the replay pipe and adds to the line queues.
@@ -107,7 +110,7 @@ class BitStreamer(object):
 
             return encoded & 0xFFFF
         else:
-            return 0xFFFF
+            return NopChar
 
     def getNextBits(self):
         """Send the next set of bits based on incoming text.
