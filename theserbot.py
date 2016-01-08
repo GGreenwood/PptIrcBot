@@ -39,6 +39,7 @@ TasbotPipeName = settings.get('TasbotPipeName', 'tasbot_pipe')
 TasbotPipeEnable = settings.get('TasbotPipeEnable', False)
 
 LeftDelay = settings.get('LeftDelay', 30)
+RightDelay = settings.get('RightDelay', 10)
 
 def writeToPipe(writePipe, msg):
     """Utility function to write a message to a pipe.
@@ -135,6 +136,7 @@ class PptIrcBot(irc.client.SimpleIRCClient):
         text = text.replace('up', 'u')
         text = text.replace('down', 'd')
 
+        # Enforce left delay
         if text == 'l':
             if self.leftFrameCount > LeftDelay:
                 self.leftFrameCount = 1
@@ -144,6 +146,17 @@ class PptIrcBot(irc.client.SimpleIRCClient):
                 return
         else:
             self.leftFrameCount = self.leftFrameCount + 1
+
+        # Enfore right delay
+        if text == 'r':
+            if self.rightFrameCount > RightDelay:
+                self.rightFrameCount = 1
+
+            else:
+                self.naughtyMessage(sender, "right pressed too soon")
+                return
+        else:
+            self.rightFrameCount = self.rightFrameCount + 1
 
         if not self.re.match(text):
             self.naughtyMessage(sender, "Text is not a valid button")

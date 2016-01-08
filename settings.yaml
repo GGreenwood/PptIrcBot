@@ -14,5 +14,6 @@ TasbotPipeName:     tasbot_pipe
 TasbotPipeEnable:   false
 ##If true then tasbot's lines are read with espeak
 TasbotEspeakEnable: false
-#Amount of time to enforce between left presses (in frames)
-LeftDelay: 4
+#Amount of time to enforce between left and right presses (in frames)
+LeftDelay: 30
+RightDelay: 10
