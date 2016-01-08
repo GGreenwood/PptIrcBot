@@ -40,9 +40,9 @@ def encodeChar(chatChar=None):
     # Encode a char as a literal button press
     charId = CharMap.get(chatChar)
     if charId:
-        return ~(1 << 15 - charId) & 0xFF
+        return 0xFFFF - (1 << 15 - charId)
     else:
-        return 0xFF
+        return 0xFFFF
 
 class TextPipeHandler(Thread):
     """Reads the input from the replay pipe and adds to the line queues.
@@ -103,6 +103,7 @@ class BitStreamer(object):
         if(self.chatChars):
             encoded = encodeChar(self.chatChars[0]) 
             debug("Button pressed: %s, %s" % (self.chatChars[0], decodeBits(encoded)))
+            self.chatChars = ''
 
             return encoded & 0xFFFF
         else:
