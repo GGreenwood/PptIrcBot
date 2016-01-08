@@ -122,8 +122,11 @@ class BitStreamer(object):
             self.readChatQueue()
 
         #This is the stream that goes to replay
-        return self.getBitsToSend()
+        #Swap the byte order to match what the hardware expects
+        return swapBytes(self.getBitsToSend())
 
+def swapBytes(num):
+    return ((num << 8) & 0xFF00) | ((num >> 8) & 0x00FF)
 
 def decodeBits(bits):
     """Debugging decode of 16 bits. Convert to binary string e.g. 00111011011010101010"""
