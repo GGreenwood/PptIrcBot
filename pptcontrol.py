@@ -94,7 +94,7 @@ class BitStreamer(object):
         if self.chatQueue.empty():
             return
         line = self.chatQueue.get()
-        self.chatChars = formatRoomMessage(line)
+        self.chatChars = line
         debug("Parsed chat line: " + str(self.chatChars))
 
     def getBitsToSend(self):
