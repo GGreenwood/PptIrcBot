@@ -32,7 +32,7 @@ settingsFile.close()
 IrcServer = settings.get('IrcServer', 'irc.freenode.net')
 IrcNick = settings.get('IrcNick', 'TheAxeBot')
 IrcPassword = settings.get('IrcPassword', None)
-IrcChannel = settings.get('IrcChannel', '#lsnes')
+IrcChannel = settings.get('IrcChannel', '#serisium')
 
 ReplayPipeName = settings.get('ReplayPipeName', 'replay_pipe')
 TasbotPipeName = settings.get('TasbotPipeName', 'tasbot_pipe')

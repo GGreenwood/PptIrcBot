@@ -5,13 +5,14 @@ IrcServer:      chat.freenode.net
 IrcNick:        tasred
 IrcPassword:    passwd
 #IrcPassword:    "oauth:hashFromOauthProvider"
-IrcChannel:     "#tasbot"
+IrcChannel:     "#serisium"
 #
 ReplayPipeName:     replay_pipe
 TasbotPipeName:     tasbot_pipe
-ScreenPlayFileName: RedScreenplayCorrected.txt
 #
 ##If true then tasbot's lines are written to tasbotpipe
-TasbotPipeEnable:   true
+TasbotPipeEnable:   false
 ##If true then tasbot's lines are read with espeak
-TasbotEspeakEnable: true
+TasbotEspeakEnable: false
+#Amount of time to enforce between left presses (in frames)
+LeftDelay: 4

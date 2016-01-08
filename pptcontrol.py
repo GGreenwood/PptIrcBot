@@ -280,12 +280,6 @@ def encodeThreeChars(c1=None, c2=None, c3=None):
     return (n1 << 10) + (n2 << 5) + n3
 
 
-def encodeRedChar(redChar):
-    """
-    Encode a char for red's text as a 16-bit value.
-    """
-    return HighBitSet + SevenBitMapping.get(redChar, NullCharCode)
-
 
 def encodeChatChar(chatChar):
     """Encode a single chat char in ascii"""
@@ -335,13 +329,8 @@ class TextPipeHandler(Thread):
         """Listen on the pipe. On reading something add it to the appropriate queue"""
         while True:
             line = self.readNextLine()
-            if line.startswith('<red>'):
-                debug('line for Red: ' + line)
-                self.redQueue.put(line[len('<red>:'):])
-            #Check the number of chat lines queued up. Drop this one if there are too many.
-            elif self.chatQueue.qsize() < 20:
-                debug('chat line: ' + line)
-                self.chatQueue.put(line)
+            debug('chat line: ' + line)
+            self.chatQueue.put(line)
 
 
 class BitStreamer(object):
@@ -363,20 +352,6 @@ class BitStreamer(object):
         #Number of inputs until another char from red
         self.redCooldown = 0
 
-    def readRedQueue(self):
-        """Grab a line of red's text"""
-        if self.redQueue.empty():
-            return
-        #Red's lines just have the text
-        text = self.redQueue.get().rstrip('\n')
-        # self.redChars = padForRed(textToSymbols(text)) + ['\n']
-        symbols = textToSymbols(text)
-        if (symbols[0] == "ShiftPalette"):
-            self.redChars = symbols
-        else:
-            self.redChars = padForRed(symbols)
-        debug("Parsed red line: " + str(self.redChars))
-
     def readChatQueue(self):
         """Grab a line of chat text"""
         if self.chatQueue.empty():
@@ -387,49 +362,12 @@ class BitStreamer(object):
 
     def getBitsToSend(self):
         """Check our char queues and get the bits to send"""
+        #include a chat char
+        debug("Chat: %r Red: %r" % (self.chatChars[0], self.redChars[0],))
+        return encodeTwoChars(
+            self.chatChars.pop(0),
+            self.redChars.pop(0))
 
-        #First see if we have chars for red
-        if len(self.redChars) > 0:
-            if self.redChars[0] == 'ShiftPalette':
-                self.redChars.pop(0)
-                return ShiftPaletteBits
-            if self.redCooldown == 0:
-                # Set cooldown - This is what slows down red's typing.
-                self.redCooldown = RED_COOLDOWN
-                if len(self.chatChars) == 0:
-                    #no chat char
-                    debug("One char for Red: %r" % (self.redChars[0],))
-                    return encodeRedChar(self.redChars.pop(0))
-                else:
-                    #include a chat char
-                    debug("Chat: %r Red: %r" % (self.chatChars[0], self.redChars[0],))
-                    return encodeTwoChars(
-                        self.chatChars.pop(0),
-                        self.redChars.pop(0))
-            else:
-                self.redCooldown -= 1
-
-        # Chat chars only. Figure out how many of next chars are 5-bit
-        # encodable.  If all three of them then we use the compact
-        # format.
-        if (len(self.chatChars) >= 3 and
-                self.chatChars[0] in FiveBitMapping and
-                self.chatChars[1] in FiveBitMapping and
-                self.chatChars[2] in FiveBitMapping):
-            c1 = self.chatChars.pop(0)
-            c2 = self.chatChars.pop(0)
-            c3 = self.chatChars.pop(0)
-
-            debug("Three 5-bit chars: %r %r %r" % (c1, c2, c3))
-            return encodeThreeChars(c1, c2, c3)
-
-        #Send a chat char if one is available
-        if len(self.chatChars) > 0:
-            debug("One 7-bit char: %r" % (self.chatChars[0]))
-            return encodeChatChar(self.chatChars.pop(0))
-
-        #Default to no-op
-        return NopBits
 
     def getNextBits(self):
         """Send the next set of bits based on incoming text.
@@ -439,12 +377,9 @@ class BitStreamer(object):
         #available in the Queue
         if len(self.chatChars) == 0:
             self.readChatQueue()
-        if len(self.redChars) == 0:
-            self.readRedQueue()
 
         #This is the stream that goes to replay
         return self.getBitsToSend()
-
 
 def decodeBits(bits):
     """Debugging decode of 16 bits. Convert to binary string e.g. 00111011011010101010"""
