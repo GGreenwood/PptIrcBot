@@ -101,7 +101,7 @@ class BitStreamer(object):
         """Check our char queues and get the bits to send"""
         #include a chat char
         if(self.chatChars):
-            encoded = encodeChar(self.chatChars.pop(0)) 
+            encoded = encodeChar(self.chatChars[0]) 
             debug("Button pressed: %s, %s" % (self.chatChars.pop(0), decodeBits(encoded)))
 
             return encoded & 0xFFFF
